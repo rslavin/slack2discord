@@ -100,7 +100,10 @@ def register_commands():
                     with open(json_file) as f:
                         for message in json.load(f):
                             if all(key in message for key in ['user_profile', 'ts', 'text']):
-                                username = (message['user_profile']['display_name'])
+                                if message['user_profile']['display_name']:
+                                    username = message['user_profile']['display_name']
+                                else:
+                                    username = message['user_profile']['real_name']
                                 timestamp = datetime.fromtimestamp(float(message['ts'])).strftime(
                                     '%m/%d/%Y at %H:%M:%S')
                                 text = fill_mentions(message['text'], users)
