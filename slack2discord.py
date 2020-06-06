@@ -32,18 +32,34 @@ def get_file_paths(file_path):
     return json_files
 
 
-def get_display_names(file_path):
+def get_display_names(json_file_paths):
     """
     Generates a dictionary of user_id => display_name pairs
-    :param file_path: Path to users.json
-    :return: Dictionary
+    :param json_file_paths: List of paths being parsed
+    :return: Dictionary or None if no file is found
     """
     users = {}
+
+    print(f"[INFO] Attempting to locate users.json")
+
+    user_file_path_dir = os.path.join(os.path.dirname(json_file_paths[0]), "users.json")
+    user_file_path_files = os.path.join(os.path.dirname(os.path.dirname(json_file_paths[0])), "users.json")
+
+    if os.path.isfile(user_file_path_dir):
+        file_path = user_file_path_dir
+    elif os.path.isfile(user_file_path_files):
+        file_path = user_file_path_files
+    else:
+        print(f"[ERROR] Unable to locate users.json")
+        return None
+
     try:
         with open(file_path) as f:
             users_json = json.load(f)
             for user in users_json:
-                users[user['id']] = (user['profile']['display_name'] if user['profile']['display_name'] else "UNKNOWN")
+                users[user['id']] = (
+                    user['profile']['display_name'] if user['profile']['display_name'] else user['profile'][
+                        'real_name'])
                 print(f"\tUser ID: {user['id']} -> Display Name: {users[user['id']]}")
     except Exception as e:
         print(f"[ERROR] Unable to load display names: {e}")
@@ -51,15 +67,51 @@ def get_display_names(file_path):
     return users
 
 
-def fill_mentions(message, users):
+def get_channel_names(json_file_paths):
     """
-    Fills in @mentions with their known display names
-    :param message:
-    :param users:
-    :return:
+    Generates a dictionary of channel_id => channel_name pairs
+    :param json_file_paths: List of paths being parsed
+    :return: Dictionary or None if no file is found
+    """
+    channels = {}
+
+    print(f"[INFO] Attempting to locate channels.json")
+
+    channel_file_path_dir = os.path.join(os.path.dirname(json_file_paths[0]), "channels.json")
+    channel_file_path_files = os.path.join(os.path.dirname(os.path.dirname(json_file_paths[0])), "channels.json")
+
+    if os.path.isfile(channel_file_path_dir):
+        file_path = channel_file_path_dir
+    elif os.path.isfile(channel_file_path_files):
+        file_path = channel_file_path_files
+    else:
+        print(f"[ERROR] Unable to locate channels.json")
+        return None
+
+    try:
+        with open(file_path) as f:
+            channels_json = json.load(f)
+            for channel in channels_json:
+                channels[channel['id']] = channel['name']
+                print(f"\tChannel ID: {channel['id']} -> Channel Name: {channels[channel['id']]}")
+    except Exception as e:
+        print(f"[ERROR] Unable to load channel names: {e}")
+        return None
+    return channels
+
+
+def fill_references(message, users, channels):
+    """
+    Fills in @mentions and #channels with their known display names
+    :param message: Raw message to be filled with usernames and channel names instead of IDs
+    :param users: Dictionary of user_id => display_name pairs
+    :param channels: Dictionary of channel_id => channel_name pairs
+    :return: Filled message string
     """
     for uid, name in users.items():
         message = message.replace(f"<@{uid}>", f"@{name}")
+    for cid, name in channels.items():
+        message = message.replace(f"<#{cid}>", f"#{name}")
     return message
 
 
@@ -80,19 +132,17 @@ def register_commands():
         if not json_file_paths:
             print(f"[ERROR] No .json files found at {path}")
         else:
-            # attempt to find users.json to fill in @mentions
-            user_file_path_dir = os.path.join(os.path.dirname(json_file_paths[0]), "users.json")
-            user_file_path_files = os.path.join(os.path.dirname(os.path.dirname(json_file_paths[0])), "users.json")
-            users = {}
-            print(f"[INFO] Attempting to load users.json")
-            if os.path.isfile(user_file_path_dir):
-                users = get_display_names(user_file_path_dir)
-            elif os.path.isfile(user_file_path_files):
-                users = get_display_names(user_file_path_files)
+            users = get_display_names(json_file_paths)
             if users:
                 print(f"[INFO] users.json found - attempting to fill @mentions")
             else:
                 print(f"[WARNING] No users.json found - @mentions will contain user IDs instead of display names")
+
+            channels = get_channel_names(json_file_paths)
+            if channels:
+                print(f"[INFO] channels.json found - attempting to fill #channel references")
+            else:
+                print(f"[WARNING] No channels.json found - #channel references will contain user IDs instead of names")
 
             for json_file in sorted(json_file_paths):
                 print(f"[INFO] Parsing file: {json_file}")
@@ -106,7 +156,7 @@ def register_commands():
                                     username = message['user_profile']['real_name']
                                 timestamp = datetime.fromtimestamp(float(message['ts'])).strftime(
                                     '%m/%d/%Y at %H:%M:%S')
-                                text = fill_mentions(message['text'], users)
+                                text = fill_references(message['text'], users, channels)
                                 msg = f"**{username}** *({timestamp})*\n{text}"
                                 await ctx.send(msg)
                                 print(f"[INFO] Imported message: '{msg}'")
