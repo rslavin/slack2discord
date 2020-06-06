@@ -77,23 +77,23 @@ def register_commands():
         print(f"[INFO] Attempting to import '{path}' to channel '#{ctx.message.channel.name}'")
         json_file_paths = get_file_paths(path)
 
-        # attempt to find users.json to fill in @mentions
-        user_file_path_dir = os.path.join(os.path.dirname(json_file_paths[0]), "users.json")
-        user_file_path_files = os.path.join(os.path.dirname(os.path.dirname(json_file_paths[0])), "users.json")
-        users = {}
-        print(f"[INFO] Attempting to load users.json")
-        if os.path.isfile(user_file_path_dir):
-            users = get_display_names(user_file_path_dir)
-        elif os.path.isfile(user_file_path_files):
-            users = get_display_names(user_file_path_files)
-        if users:
-            print(f"[INFO] users.json found - attempting to fill @mentions")
-        else:
-            print(f"[WARNING] No users.json found - @mentions will contain user IDs instead of display names")
-
         if not json_file_paths:
             print(f"[ERROR] No .json files found at {path}")
         else:
+            # attempt to find users.json to fill in @mentions
+            user_file_path_dir = os.path.join(os.path.dirname(json_file_paths[0]), "users.json")
+            user_file_path_files = os.path.join(os.path.dirname(os.path.dirname(json_file_paths[0])), "users.json")
+            users = {}
+            print(f"[INFO] Attempting to load users.json")
+            if os.path.isfile(user_file_path_dir):
+                users = get_display_names(user_file_path_dir)
+            elif os.path.isfile(user_file_path_files):
+                users = get_display_names(user_file_path_files)
+            if users:
+                print(f"[INFO] users.json found - attempting to fill @mentions")
+            else:
+                print(f"[WARNING] No users.json found - @mentions will contain user IDs instead of display names")
+
             for json_file in sorted(json_file_paths):
                 print(f"[INFO] Parsing file: {json_file}")
                 try:
