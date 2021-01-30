@@ -117,7 +117,7 @@ def fill_references(message, users, channels):
 
 def register_commands():
     @bot.command(pass_context=True)
-    async def import_here(ctx, *path):
+    async def import_here(ctx, *kwpath):
         """
         Attempts to import .json files from the specified path (relative to the bot) to the channel from which the
         command is invoked.
@@ -125,47 +125,48 @@ def register_commands():
         :param path:
         :return:
         """
-        path = ' '.join(path)
-        print(f"[INFO] Attempting to import '{path}' to channel '#{ctx.message.channel.name}'")
-        json_file_paths = get_file_paths(path)
+        paths = list(kwpath)
+        for path in paths:
+            print(f"[INFO] Attempting to import '{path}' to channel '#{ctx.message.channel.name}'")
+            json_file_paths = get_file_paths(path)
 
-        if not json_file_paths:
-            print(f"[ERROR] No .json files found at {path}")
-        else:
-            users = get_display_names(json_file_paths)
-            if users:
-                print(f"[INFO] users.json found - attempting to fill @mentions")
+            if not json_file_paths:
+                print(f"[ERROR] No .json files found at {path}")
             else:
-                print(f"[WARNING] No users.json found - @mentions will contain user IDs instead of display names")
+                users = get_display_names(json_file_paths)
+                if users:
+                    print(f"[INFO] users.json found - attempting to fill @mentions")
+                else:
+                    print(f"[WARNING] No users.json found - @mentions will contain user IDs instead of display names")
 
-            channels = get_channel_names(json_file_paths)
-            if channels:
-                print(f"[INFO] channels.json found - attempting to fill #channel references")
-            else:
-                print(f"[WARNING] No channels.json found - #channel references will contain user IDs instead of names")
+                channels = get_channel_names(json_file_paths)
+                if channels:
+                    print(f"[INFO] channels.json found - attempting to fill #channel references")
+                else:
+                    print(f"[WARNING] No channels.json found - #channel references will contain user IDs instead of names")
 
-            for json_file in sorted(json_file_paths):
-                print(f"[INFO] Parsing file: {json_file}")
-                try:
-                    with open(json_file) as f:
-                        for message in json.load(f):
-                            if all(key in message for key in ['user_profile', 'ts', 'text']):
-                                if message['user_profile']['display_name']:
-                                    username = message['user_profile']['display_name']
+                for json_file in sorted(json_file_paths):
+                    print(f"[INFO] Parsing file: {json_file}")
+                    try:
+                        with open(json_file) as f:
+                            for message in json.load(f):
+                                if all(key in message for key in ['user_profile', 'ts', 'text']):
+                                    if message['user_profile']['display_name']:
+                                        username = message['user_profile']['display_name']
+                                    else:
+                                        username = message['user_profile']['real_name']
+                                    timestamp = datetime.fromtimestamp(float(message['ts'])).strftime(
+                                        '%m/%d/%Y at %H:%M:%S')
+                                    text = fill_references(message['text'], users, channels)
+                                    msg = f"**{username}** *({timestamp})*\n{text}"
+                                    await ctx.send(msg)
+                                    print(f"[INFO] Imported message: '{msg}'")
+                                    time.sleep(THROTTLE_TIME_SECONDS)
                                 else:
-                                    username = message['user_profile']['real_name']
-                                timestamp = datetime.fromtimestamp(float(message['ts'])).strftime(
-                                    '%m/%d/%Y at %H:%M:%S')
-                                text = fill_references(message['text'], users, channels)
-                                msg = f"**{username}** *({timestamp})*\n{text}"
-                                await ctx.send(msg)
-                                print(f"[INFO] Imported message: '{msg}'")
-                                time.sleep(THROTTLE_TIME_SECONDS)
-                            else:
-                                print("[WARNING] User information, timestamp, or message text missing")
-                except Exception as e:
-                    print(f"[ERROR] {e}")
-            print(f"[INFO] Import complete")
+                                    print("[WARNING] User information, timestamp, or message text missing")
+                    except Exception as e:
+                        print(f"[ERROR] {e}")
+                print(f"[INFO] Import complete")
 
 
 if __name__ == "__main__":
