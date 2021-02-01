@@ -12,4 +12,4 @@ Slack allows for you to export all messages from your workspace. See [Slack's of
 1. Use ``pip install -r requirements.txt`` to install the necessary requirements. Alternatively, just install discord.py with ``pip install discord.py``
 1. Execute the program.
 1. Enter the bot token as prompted by the program.
-1. Invoke ``!import_here <filepath>`` from Discord in whichever channel you want to import the json files to.
+1. Invoke ``!import_here <filepath>`` from Discord in whichever channel you want to import the messages to. Note that if your path contains spaces, you must surround the path with quotes (e.g., ``!import_here "c:\path\to\some file"``). You may also pass multiple paths to import multiple Slack channels into a single Discord channel (e.g. ``!import_here c:\path\to\channel1 c:\path\to\channel2``).
