@@ -120,7 +120,8 @@ def register_commands():
     async def import_here(ctx, *kwpath):
         """
         Attempts to import .json files from the specified path (relative to the bot) to the channel from which the
-        command is invoked.
+        command is invoked. Multiple paths can be passed, in which case the corresponding files will be imported in
+        order.
         :param ctx:
         :param path:
         :return:
