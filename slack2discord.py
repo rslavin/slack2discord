@@ -54,7 +54,7 @@ def get_display_names(json_file_paths):
         return None
 
     try:
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             users_json = json.load(f)
             for user in users_json:
                 users[user['id']] = (
@@ -89,7 +89,7 @@ def get_channel_names(json_file_paths):
         return None
 
     try:
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             channels_json = json.load(f)
             for channel in channels_json:
                 channels[channel['id']] = channel['name']
@@ -149,7 +149,7 @@ def register_commands():
                 for json_file in sorted(json_file_paths):
                     print(f"[INFO] Parsing file: {json_file}")
                     try:
-                        with open(json_file) as f:
+                        with open(json_file, encoding="utf-8") as f:
                             for message in json.load(f):
                                 if all(key in message for key in ['user_profile', 'ts', 'text']):
                                     if message['user_profile']['display_name']:
