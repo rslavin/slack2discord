@@ -1,16 +1,16 @@
 # Fork information
 ## Added features
-- [!import_path [<path>]](#import_path-path)
-- [!import_all <path>](#import_all-path)
+- [!import_path [&lt;path&gt;]](#import_path-path)
+- [!import_all &lt;path&gt;](#import_all-path)
 - [Channel creation](#channel-creation)
 - [Mentions and User mapping](#mentions-and-user-mapping)
 - [File-attachments](#file-attachments)
 - [Splitting messages](#splitting-messages)
 
-### !import_path [<path>]
+### !import_path [&lt;path&gt;]
 Added a command that allows user to call the bot from a different channel, where the target channel's name is extracted from given path.
 
-### !import_all <path>
+### !import_all &lt;path&gt;
 Added a command that parses given slack log directory and imports *all* channels found within.
 Unlike *import_path*, this command forces the path into the slack-log's root-folder (if possible) even if user targeted a subdirectory or specific file.
 
@@ -37,7 +37,7 @@ If there was a message body, the first embed is attached to the message, and any
 If discord.py version >= v2.0, it tries to attach 10 (API limit) embeds to each message instead.
 
 ## Features from original/upstream
-### !import_here [<path>]
+### !import_here [&lt;path&gt;]
 A command importing the .json logs found inside given path into the current channel.
 
 ### Mapping uid's to slack-name
