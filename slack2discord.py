@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# Authors: Felix Hallqvist
-#          Rocky Slavin
+# Authors: Rocky Slavin
+#          Felix Hallqvist
 # Slack message history importer for Discord
 # Note that some functionality won't work properly if not using the import_all command,
 # such as messages in threads created in older .json logs (created in the text channel instead),
@@ -8,10 +8,9 @@
 # Also note that mentions will only be properly migrated for users already on the discord server.
 # To fascilitate the fact that people use different nicks, there is a slack2discord.json file where you can map those (if no mapping exists, it just attempts to match name).
 # TODO Properly migrate the assets to discord, rather than embedded url's
-# TODO Properly migrate Threads (means both creating and posting in - https://discordpy.readthedocs.io/en/stable/api.html#discord.TextChannel.create_thread - https://discordpy.readthedocs.io/en/stable/api.html#discord.Message.create_thread)
-#      Apparently threads use timestamp as id in slack
 # TODO Post messages looking like the mapped user (webhooks? send() can specify username there)
 import json
+import sys
 import os
 import time
 from datetime import datetime
@@ -26,6 +25,33 @@ MAX_CHARACTERS = 2000
 
 THROTTLE = True
 THROTTLE_TIME_SECONDS = 0.1
+
+
+def check_optional_dependencies():
+    print(f"[INFO] Checking (optional) dependency versions:")
+    if discord.__version__[0] < "2":
+        # Pre discord.py v2.0 the bot can only give messages 1 embed,
+        #  so has to be split into multiple messages.
+        # Creating threads was added in discord.py v2.0
+        # discord.py v2.0 also increased the package's requirements,
+        #  requiring a higher python version.
+        # It is thus treated as optional.
+        print(f"[WARNING] discord.py version < 2.0, currently using version: {discord.__version__}")
+        print(f"          Some features are unsupported with current version:")
+        print(f"          * Unable to create Threads")
+        print(f"            - Messages will be sent directly to the owner's TextChannel instead.")
+        print(f"          * Messages are unable to contain more than 1 Embed each")
+        print(f"            - Multiple attachments they will be split into multiple messages,")
+        print(f"               linking to their 'parent' message.")
+        print(f"          Upgrade discord.py to >= 2.0 to enable those features.")
+        
+        if sys.version_info[1] < 8:
+            print(f"[INFO] Current python version does not satisfy discord.py v2.0 dependency. Current: {'.'.join(map(str, sys.version_info[:3]))}")
+            print(f"       You will be unable to upgrade discord.py to v2.0,")
+            print(f"        unless you first upgrade python to >= 3.8")
+    else:
+        print(f"       All features enabled! - No dependencies unsatisfied")
+    print(f"")
 
 
 def get_basename(file_path):
@@ -92,6 +118,7 @@ def parse_slack_directory(file_path, force_all=False):
                 return None
     
     slack_dir["important"] = {k: os.path.join(root, f) for k, f in slack_dir["important"].items() }
+    slack_dir["root"] = root
 
     if not slack_dir["history"]:
         print(f"[ERROR] No history .json files found at: {file_path}")
@@ -262,9 +289,9 @@ def parse_important_files(slack_dir):
 async def get_or_create_channel(ctx, name):
     channel = discord.utils.get(ctx.guild.channels, name=name, type=discord.ChannelType.text)
     if not channel:
-        print(f"[WARNING] Could not find channel: {name}")
-        print(f"[FIX] Creating channel")
-        channel = await ctx.guild.create_text_channel(name)
+        print(f"[INFO] Could not find channel: {name}")
+        print(f"       Creating channel")
+        channel = await ctx.guild.create_text_channel(name, reason="Migrating Slack channel")
     return channel
 
 
@@ -365,10 +392,12 @@ def parse_message(message, users):
         print(f"[ERROR] Failed to parse message: {message}")
         return None
 
-    return msg_id, msg, files
+    thread = message.get("thread_ts", None)
+
+    return msg_id, msg, files, thread
 
 
-async def send_message(ctx, msg, embeds=None, allowed_mentions=None):
+async def send_message(ctx, msg, ref=None, embeds=None, allowed_mentions=None):
     if not msg:
         print(f"[DEBUG] Why are you here? - Skipping empty message")
         return None
@@ -392,19 +421,13 @@ async def send_message(ctx, msg, embeds=None, allowed_mentions=None):
             time.sleep(THROTTLE_TIME_SECONDS)
     else:
         if len(embeds) > MAX_EMBEDS:
-            # Pre discord.py v2.0 the bot can only give messages 1 embed, so has to be split into multiple messages.
-            # discord v2.0 also increased the package's requirements, requiring a higher python version.
-            if discord.__version__[0] >= "2":
-                print(f"[WARNING] Message contains over 10 embeds, but discord.py does not support sending that many embeds in a single message.")
-                print(f"          Instead, this bot will split it into multiple messages, referencing their parent.")
-            else:
-                print(f"[WARNING] Message contains multiple embeds, but discord.py does not support sending multiple embeds in a single message.")
-                print(f"          Would require upgrading to discord.py v>=2.0, which requires raising the python-version requirement.")
-                print(f"          Instead, this bot will split it into multiple messages, referencing their parent.")
+            print(f"[INFO] Message contains over {MAX_EMBEDS} embeds.")
+            print(f"       They will be split into multiple messages,")
+            print(f"        referencing their parent.")
 
         if discord.__version__[0] >= "2":
             while embeds:
-                ref = await ctx.send(msg, embeds=embeds[:MAX_EMBEDS], reference=last_ref, allowed_mentions = allowed_mentions)
+                ref = await ctx.send(msg, embeds=embeds[:MAX_EMBEDS], reference=last_ref or ref, allowed_mentions = allowed_mentions)
                 first_ref = first_ref or ref
                 last_ref = last_ref or ref
                 if THROTTLE:
@@ -413,7 +436,7 @@ async def send_message(ctx, msg, embeds=None, allowed_mentions=None):
                 embeds=embeds[MAX_EMBEDS:] # tail
         else:
             for embed in embeds:
-                ref = await ctx.send(msg, embed=embed, reference=last_ref, allowed_mentions = allowed_mentions)
+                ref = await ctx.send(msg, embed=embed, reference=last_ref or ref, allowed_mentions = allowed_mentions)
                 first_ref = first_ref or ref
                 last_ref = last_ref or ref
                 if THROTTLE:
@@ -424,7 +447,12 @@ async def send_message(ctx, msg, embeds=None, allowed_mentions=None):
 
 
 async def import_files(ctx, fs, users, slack2discord_users, channels):
-    messages = {}
+    # # dict mapping slack msg-id -> discord message for migrating replies.
+    # # Appears slack does not have replies, so this dict is useless.
+    # messages = {}
+    # dict mapping slack thread_timestamp -> discord thread
+    #  If discord.py < 2.0 this is instead used to reference thread-owner
+    threads = {}
     for json_file in sorted(fs):
         print(f"[INFO] Parsing file: {json_file}")
         try:
@@ -433,15 +461,46 @@ async def import_files(ctx, fs, users, slack2discord_users, channels):
                     print(f"[INFO] Parsing message:")
                     parsed = parse_message(message, users)
                     if parsed:
-                        msg_id, msg, files = parsed
+                        msg_id, msg, files, thread_ts = parsed
 
                         if msg:
+                            context = ctx
+                            thread_owner = None
                             if not msg_id:
                                 print(f"[WARNING] No message-id found - will be unlinkable")
                             msg = await fill_references(ctx, msg, users, slack2discord_users, channels)
                             print(f"[INFO] Importing message: '{msg}'")
+                            if thread_ts:
+                                # Prefix to clarify message owns/belongs to thread
+                                prefix = "[Thread OP] "
+                                if thread_ts in threads:
+                                    print(f"[INFO] Message belongs to thread: {thread_ts}")
+                                    if discord.__version__[0] < "2":
+                                        # Emulating threads by converting it into a reply-chain
+                                        thread_owner = threads[thread_ts]
+                                        prefix = "[Thread] "
+                                    else:
+                                        context = threads[thread_ts]
+                                if discord.__version__[0] < "2":
+                                    msg = prefix + msg
+
+
                             disable_notifications = discord.AllowedMentions.none()
-                            messages[msg_id] = await send_message(ctx, msg, embeds=files if files else None, allowed_mentions = disable_notifications)
+                            message = await send_message(context, msg, ref=thread_owner, embeds=files if files else None, allowed_mentions = disable_notifications)
+                            # messages[msg_id] = message
+
+                            if thread_ts:
+                                if not thread_ts in threads:
+                                    print(f"[INFO] Message owns a thread: {thread_ts}")
+                                    if discord.__version__[0] < "2":
+                                        print(f"       Contents will be sent directly to text-channel, referencing this, instead")
+                                        threads[thread_ts] = message
+                                    else:
+                                        print(f"       Creating thread")
+                                        threads[thread_ts] = await message.create_thread(name=thread_ts, reason="Migrating Slack thread")
+                                if discord.__version__[0] >= "2":
+                                    # Threads need to be archived after each message, as well as creation.
+                                    await threads[thread_ts].edit(archived=True)
                             print(f"[INFO] Message imported!")
 
                         if not msg and not files:
@@ -452,9 +511,9 @@ async def import_files(ctx, fs, users, slack2discord_users, channels):
         except OSError as e:
             print(f"[ERROR] {e}")
         print(f"") # extra empty line
-    return messages
+    # return messages
 
-async def import_slack_dir(ctx, path, slack_dir, match_channel=True):
+async def import_slack_directory(ctx, path, slack_dir, match_channel=True):
     if not ctx:
         print(f"[ERROR] Import aborted - No context was given!")
     if not slack_dir:
@@ -497,7 +556,7 @@ def register_commands():
         print(f"[INFO] Attempting to import '{path}' to server '#{ctx.message.guild.name}'")
         slack_dir = parse_slack_directory(path, force_all=True)
         
-        await import_slack_dir(ctx, path, slack_dir)
+        await import_slack_directory(ctx, path, slack_dir)
 
     @bot.command(pass_context=True)
     async def import_path(ctx, *kwpath):
@@ -515,11 +574,15 @@ def register_commands():
         
         print(f"[INFO] Attempting to import '{paths}' to server '#{ctx.message.guild.name}'")
         slack_dir = parse_slack_directory(paths[0])
+        if not slack_dir:
+            print(f"[ERROR] Failed to parse slack directory")
+            return
+
         for path in paths[1:]:
             for k, v in parse_slack_directory(path)["history"].items():
                 slack_dir["history"][k] = slack_dir["history"].get(k,[]) + v
             
-        await import_slack_dir(ctx, path, slack_dir)
+        await import_slack_directory(ctx, slack_dir["root"], slack_dir)
 
     @bot.command(pass_context=True)
     async def import_here(ctx, *kwpath):
@@ -535,13 +598,15 @@ def register_commands():
         for path in paths:
             print(f"[INFO] Attempting to import '{path}' to channel '#{ctx.message.channel.name}'")
             slack_dir = parse_slack_directory(path)
-            await import_slack_dir(ctx, path, slack_dir, match_channel=False)
+            await import_slack_directory(ctx, path, slack_dir, match_channel=False)
 
 
 if __name__ == "__main__":
+    check_optional_dependencies()
     intents = discord.Intents.default()
     intents.members = True
-    # intents = discord.Intents(messages=True, members=True)
+    if discord.__version__[0] >= "2":
+        intents.message_content = True
     bot = commands.Bot(command_prefix="!", intents=intents)
     register_commands()
     bot.run(input("Enter bot token: "))
