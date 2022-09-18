@@ -31,7 +31,7 @@ Parses given Slack log directory and imports *all* channels found within.
 Unlike *import_path*, this command forces the path into the Slack log's root directory (if possible) even if user targeted a subdirectory or specific file.
 
 ### Thread Migration
-Slack threads are migrated into equivalent discord Threads *if `discord.py` version >= 2.0*.
+Slack threads are migrated into equivalent discord Threads *if discord.py version >= 2.0*.
 If not, they are instead migrated in the form of a reply to the Thread OP, adding a thread-prefix to the message header. 
 
 ### Channel & Thread Creation
@@ -54,7 +54,7 @@ When a message exceeds Discord's character limit, it is split into multiple mess
 Each message references their parent in the chain.
 If there are multiple embeds in a single message, they are split into multiple messages.
 If there was a message body, the first embed is attached to the message, and any additional embeds reference that message. If message's text was split, the last in the chain is used.
-If `discord.py` version >= v2.0, it tries to attach (up to) 10 embeds (API limit) to each message instead.
+If discord.py version >= v2.0, it tries to attach (up to) 10 embeds (API limit) to each message instead.
 
 ## Deprecated Features
 ### !import_here &lt;path&gt;
