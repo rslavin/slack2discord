@@ -17,6 +17,7 @@ Slack allows for you to export all messages from your workspace. See [Slack's of
 ## Features
 - [!import_path &lt;path&gt;](#import_path-path)
 - [!import_all &lt;path&gt;](#import_all-path)
+- [Thread Migration](#thread-migration)
 - [Channel Creation](#channel-creation)
 - [Mentions and User Mapping](#mentions-and-user-mapping)
 - [File Attachments](#file-attachments)
@@ -29,16 +30,20 @@ Allows user to call the bot from a different channel, where the target channel's
 Parses given Slack log directory and imports *all* channels found within.
 Unlike *import_path*, this command forces the path into the Slack log's root directory (if possible) even if user targeted a subdirectory or specific file.
 
-### Channel Creation
-If a migrated channel does not exist, it is created.
-For import_all this step happens for all channels before migrating their contents, so they exist when encountering channel mentions.
+### Thread Migration
+Slack threads are migrated into equivalent discord Threads *if discord.py version >= 2.0*.
+If not, they are instead migrated in the form of a reply to the Thread OP, adding a thread-prefix to the message header. 
+
+### Channel & Thread Creation
+If a migrated channel or thread does not exist, it is created.
+For the `import_all` command all channels are checked *before* migrating their contents, so they exist when encountering channel mentions.
 
 ### Mentions and User Mapping
 Mentions translate to an actual Discord mention.
 To achieve this the targeted user has to be found, which is fascilitated by a slack2discord_users.json file containing username mappings.
 If a user does not have a mapping, their Slack name is used instead.
 If a user is not found (mapped or not), it defaults to a regular string f"@{slack_name}".
-Note that mapping to a user to an empty string can be used to force the user to not be found.
+Note that mapping a user to an empty string can be used to force the user to not be found.
 
 ### File Attachments
 File attachments are parsed from Slack messages and translatd to an embed for them in Discord.
@@ -49,7 +54,7 @@ When a message exceeds Discord's character limit, it is split into multiple mess
 Each message references their parent in the chain.
 If there are multiple embeds in a single message, they are split into multiple messages.
 If there was a message body, the first embed is attached to the message, and any additional embeds reference that message. If message's text was split, the last in the chain is used.
-If discord.py version >= v2.0, it tries to attach 10 (API limit) embeds to each message instead.
+If discord.py version >= v2.0, it tries to attach (up to) 10 embeds (API limit) to each message instead.
 
 ## Deprecated Features
 ### !import_here &lt;path&gt;
@@ -61,10 +66,6 @@ When migrating a message, the bot prefixes a header of who sent it and when.
 ### Migrating Files
 The file attachments are not actually reuploaded into discord, but merely posted as an Embed linking to the file's url.
 
-### Migrating Threads
-Slack threads are not properly migrated into discord threads.
-Messages from a thread is posted (chronologically) into their parent channel instead.
-
 ### Migrating DMs
 The bot is unable to migrate DMs, on account of Slack not exporting DMs.
 Even if Slack did, the bot would not have access to all Discord user's accounts, and would thus be unable to send DMs from them.
@@ -73,5 +74,4 @@ Even if Slack did, the bot would not have access to all Discord user's accounts,
 While it does append the header, when migrating messages the bot does **not** make them appear as if the appropriate user posted them.
 
 ### Querying user and command arguments
-No command arguments can be given when starting the bot, and the user is not queried for mappings if they failed to create a slack2discord_users.json file.
-
+No command arguments can be given when starting the bot, and the user is not queried for mappings if they failed to create a slack2discord_users.json` file. The only query performed is for the bot-token.
