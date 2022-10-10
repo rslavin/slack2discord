@@ -7,6 +7,17 @@ slack2discord is meant to be a one-time-use bot for importing a message history 
 ## Exporting Messages from Slack
 Slack allows for you to export all messages from your workspace. See [Slack's official documentation](https://slack.com/help/articles/201658943-Export-your-workspace-data) for details. The exported files will be organized into individual directories for each channel with .json files for each day's messages. slack2discord can handle individual .json files or entire channel directories.
 
+---
+### **NOTE**
+
+Add a file _slack2discord_users.json_ in the root directory, that can be used to map between the slack user and their respective nicknames. 
+
+#### OR 
+
+Just leave an empty _slack2discord_users.json_ file in the root directory with other JSON files (_channels.json_,_users.json_,_integration_logs.json_).
+
+---
+
 ## Executing the Program
 1. Clone this repository and set up any appropriate virtual environment.
 1. Use ``pip install -r requirements.txt`` to install the necessary requirements. Alternatively, just install discord.py with ``pip install discord.py``
