@@ -156,6 +156,8 @@ def get_display_names(slack_dir):
     except OSError as e:
         print(f"[ERROR] Unable to load display names: {e}")
         return None
+    except json.JSONDecodeError as e:
+        print(f"[ERROR] Unable to load users.json.\n  JSONDecodeError: {e}")
     return users
 
 
@@ -187,6 +189,8 @@ def get_slack2discord_user_mapping(slack_dir):
     except OSError as e:
         print(f"[ERROR] Unable to load slack2discord user mapping: {e}")
         return None
+    except json.JSONDecodeError as e:
+        print(f"[ERROR] Unable to load slack2discord_users.json.\n  JSONDecodeError: {e}")
     return slack2discord_users
 
 
@@ -214,6 +218,8 @@ def get_channel_names(slack_dir):
     except OSError as e:
         print(f"[ERROR] Unable to load channel names: {e}")
         return None
+    except json.JSONDecodeError as e:
+        print(f"[ERROR] Unable to load channels.json.\n  JSONDecodeError: {e}")
     return channels
 
 async def fill_references(ctx, message, users, slack2discord_users, channels):
@@ -224,41 +230,43 @@ async def fill_references(ctx, message, users, slack2discord_users, channels):
     :param channels: Dictionary of channel_id => channel_name pairs
     :return: Filled message string
     """
-    for uid, slack_name in users.items():
-        old_str = f"<@{uid}>"
-        if old_str in message and slack_name:
-            new_str = f"@{slack_name}"
-            if slack_name in slack2discord_users:
-                discord_name = slack2discord_users[slack_name]
-                discord_user = ctx.guild.get_member_named(discord_name)
-                if discord_user:
-                    new_str = f"{discord_user.mention}"
+    if users:
+        for uid, slack_name in users.items():
+            old_str = f"<@{uid}>"
+            if old_str in message and slack_name:
+                new_str = f"@{slack_name}"
+                if slack2discord_users and slack_name in slack2discord_users:
+                    discord_name = slack2discord_users[slack_name]
+                    discord_user = ctx.guild.get_member_named(discord_name)
+                    if discord_user:
+                        new_str = f"{discord_user.mention}"
+                    else:
+                        print(f"[ERROR] Mapped user not found on discord: [{slack_name}: {discord_name}]")
+                        print(f"        @mentions of user will not be translated to discord-equivalent")
                 else:
-                    print(f"[ERROR] Mapped user not found on discord: [{slack_name}: {discord_name}]")
-                    print(f"        @mentions of user will not be translated to discord-equivalent")
-            else:
-                print(f"[WARNING] User not mapped: {slack_name}")
-                print(f"[FIX] Attempt to match the slack name instead")
-                discord_user = ctx.guild.get_member_named(slack_name)
-                if discord_user:
-                    new_str = f"{discord_user.mention}"
+                    print(f"[WARNING] User not mapped: {slack_name}")
+                    print(f"[FIX] Attempt to match the slack name instead")
+                    discord_user = ctx.guild.get_member_named(slack_name)
+                    if discord_user:
+                        new_str = f"{discord_user.mention}"
+                    else:
+                        print(f"[ERROR] User not found on discord: {slack_name}")
+                        print(f"        @mentions of user will contain their ID instead of display name")
+                
+                message = message.replace(old_str, new_str)
+    if channels:
+        for cid, name in channels.items():
+            old_str = f"<#{cid}>"
+            if old_str in message:
+                new_str = f"#{name}"
+                channel = discord.utils.get(ctx.guild.channels, name=name)
+                if channel:
+                    new_str = f"{channel.mention}"
                 else:
-                    print(f"[ERROR] User not found on discord: {slack_name}")
-                    print(f"        @mentions of user will contain their ID instead of display name")
-            
-            message = message.replace(old_str, new_str)
-    for cid, name in channels.items():
-        old_str = f"<#{cid}>"
-        if old_str in message:
-            new_str = f"#{name}"
-            channel = discord.utils.get(ctx.guild.channels, name=name)
-            if channel:
-                new_str = f"{channel.mention}"
-            else:
-                print(f"[ERROR] Channel not found on discord: {name}")
-                print(f"        #channel references of channel will not be translated to discord-equivalent")
+                    print(f"[ERROR] Channel not found on discord: {name}")
+                    print(f"        #channel references of channel will not be translated to discord-equivalent")
 
-            message = message.replace(old_str, new_str)
+                message = message.replace(old_str, new_str)
     return message
 
 
@@ -319,7 +327,7 @@ def parse_user(message, users):
         if "user" in message:
             print(f"[INFO] Located 'user' field, attempting to map uid to username")
             username = message['user']
-            if username in users:
+            if users and username in users:
                 username = users[username]
             else:
                 print(f"[WARNING] Failed to map uid to slack username - name will remain the unmapped uid: {username}")
@@ -510,6 +518,8 @@ async def import_files(ctx, fs, users, slack2discord_users, channels):
                     print(f"") # empty line
         except OSError as e:
             print(f"[ERROR] {e}")
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] Unable to load json-file, skipping.\n  JSONDecodeError: {e}")
         print(f"") # extra empty line
     # return messages
 
