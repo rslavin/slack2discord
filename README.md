@@ -14,7 +14,7 @@ Slack allows for you to export all messages from your workspace. See [Slack's of
 1. Enter the bot token as prompted by the program.
 1. Invoke one of the import functions below from within Discord. Note that if your path contains spaces, you must surround the path with quotes (e.g., ``!import_all "c:\path\to\some file"``).
 
-## Features
+## Commands and Features
 - [!import_path &lt;path&gt;](#import_path-path)
 - [!import_all &lt;path&gt;](#import_all-path)
 - [Thread Migration](#thread-migration)
@@ -74,4 +74,4 @@ Even if Slack did, the bot would not have access to all Discord user's accounts,
 While it does append the header, when migrating messages the bot does **not** make them appear as if the appropriate user posted them.
 
 ### Querying user and command arguments
-No command arguments can be given when starting the bot, and the user is not queried for mappings if they failed to create a slack2discord_users.json` file. The only query performed is for the bot-token.
+No command arguments can be given when starting the bot, and the user is not queried for mappings if they failed to create a `slack2discord_users.json` file. The only query performed is for the bot-token.
