@@ -65,67 +65,127 @@ def get_filename(file_path):
     return get_basename(os.path.splitext(file_path)[0])
 
 
-def parse_slack_directory(file_path, force_all=False):
+async def parse_slack_directory(file_path, force_all=False):
     """
-    Returns a dict with paths to the important files,
-    and a dict of paths to history files mapped as {"channel": [files]}.
+    Parses the path to find important root-files and relevant .json logs, and stores them in a dict of the form:\n
+    {
+        "root_files": {"file": path},\n
+        "history": {"channel": [path_json_logs]}
+    }
     :param file_path: String path to directory or file
-    :return: Dict with paths to all json files.
+    :return: The resulting dict.
     """
-    root = file_path
-    
-    important_files = [
-        "users.json",
-        "slack2discord_users.json",
-        "channels.json",
-        "integration_logs.json"
-    ]
-    if force_all is True:
-        if not all([os.path.exists(os.path.join(root, f)) for f in important_files]):
-            print(f"[WARNING] Path does not point at the root of a slack-log directory: {file_path}")
-            print(f"[FIX] Assume path points at a file or subdirectory")
-            root = os.path.dirname(root)
-            if not all([os.path.exists(os.path.join(root, f)) for f in important_files]):
-                print(f"[WARNING] Path does not point at a file or subdirectory")
-                print(f"[FIX] Assume path points at some file inside subdirectory")
-                root = os.path.dirname(root)
-                if not all([os.path.exists(os.path.join(root, f)) for f in important_files]):
-                    print(f"[ERROR] Path does not point at some file inside subdirectory - skipping path.")
-                    return None
-
     slack_dir = {}
+    slack_dir["root_files"] = {}
     slack_dir["history"] = {}
-    slack_dir["important"] = {get_filename(f): f for f in important_files}
     
-    if all([os.path.exists(os.path.join(root, f)) for f in important_files]):
+    slack_root_files = {
+        "users.json" : "A file that maps internal user-ids to usernames, allowing message headers and mentions to display their human readable names",
+        "channels.json" : "A file that maps internal channel-ids to channel-names, allowing channel-mentions to display their human readable names",
+        "integration_logs.json" : "This file has no associated feature, and can safely be ignored with no effect."
+    }
+    user_root_files = {
+        "slack2discord_users.json": "A file used to map slack-names to discord-names, allowing slack-mentions to be exported into discord-mentions even when usernames change between platforms."
+    }
+    root_files = dict(slack_root_files, **user_root_files)
+
+    # Locate root
+    print(f"[INFO] Attempting to locate slack-root directory from path: {file_path}")
+    root = file_path
+    if os.path.isfile(file_path):
+        print("[WARNING] Path points at a file and not a directory")
+        print("[INFO] Assumes parent-directory is either root or a channel-subdir")
+        print("       | slack-root/  <- directory?")
+        print("       |__  *.json")
+        print("          | channel/  <- directory?")
+        print("          |    *.json")
+        root = os.path.dirname(file_path)
+        
+    if any([os.path.exists(os.path.join(root, f)) for f in slack_root_files]):
+        print(f"[INFO] Success! slack-root found: {root}")
+    else:
+        print(f"[WARNING] Directory is not root of a slack-log directory: {root}")
+        print("[INFO] Assumes directory is a channel-subdir, and parent-directory is the root.")
+        print("       | slack-root/  <- root?")
+        print("       |__  *.json")
+        print("          | channel/  <- directory")
+        print("          |    *.json")
+        root = os.path.dirname(root)
+        if any([os.path.exists(os.path.join(root, f)) for f in slack_root_files]):
+            print(f"[INFO] Success! slack-root found: {root}")
+        else:
+            print("[WARNING] Parent-directory is not root of a slack-log directory; Unable to locate root")
+            query = input("\nDo you want to ignore and continue with input path forcefully treated as 'root'? (Y/N): ")
+            if query.lower() in ["y", "yes"]:
+                print(f"[INFO] Reverts to treating input path as root: {file_path}")
+                root = file_path
+            else:
+                print(f"[ERROR] User aborted - no root")
+                return None
+
+    # Assert existence of root-files, querying user to ignore errors
+    print("[INFO] Checking for slack-root files")
+    for f, descr in slack_root_files.items():
+        f_path = os.path.join(root, f)
+        if os.path.exists(f_path):
+            print(f"[INFO] Successfully located file: {f}")
+            slack_dir["root_files"][get_filename(f)] = f_path
+        else:
+            print(f"[ERROR] Unable to locate slack-file: {f}")
+            print(f"        Description: {descr}")
+            query = input("\nDo you want to ignore and continue? (Y/N): ")
+            if query.lower() in ["y", "yes"]:
+                print(f"[OK] User ignored missing file.")
+            else:
+                print(f"[ERROR] User aborted at missing file: {f}")
+                return None
+    
+    print("[INFO] Checking for *user-created* slack-root files")
+    print("       Note: User is expected to manually create and fill these files if their functionality is desired.")
+    for f, descr in user_root_files.items():
+        f_path = os.path.join(root, f)
+        if os.path.exists(f_path):
+            print(f"[INFO] Successfully located user-created file: {f}")
+            slack_dir["root_files"][get_filename(f)] = f_path
+        else:
+            print(f"[ERROR] Unable to locate user-created file: {f}")
+            print(f"        Description: {descr}")
+            query = input("\nDo you want to ignore and continue? (Y/N): ")
+            if query.lower() in ["y", "yes"]:
+                print(f"[INFO] User ignored missing file.")
+            else:
+                print(f"[ERROR] User aborted at missing file: {f}")
+                return None
+    
+    # locate .json logs
+    print(f"[INFO] Attempting to locate relevant .json logs")
+    if force_all is True:
         subdirs = [d for d in [os.path.join(root, n) for n in os.listdir(root)] if os.path.isdir(d)]
         for d in subdirs:
             slack_dir["history"][get_basename(d)] = [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".json")]
     else:
-        print(f"[WARNING] Path does not point at the root of a slack-log directory: {file_path}")
-        print(f"[FIX] Assume path points at a channels subdirectory.")
-        root = os.path.dirname(root)
-        if os.path.isdir(file_path):
-            slack_dir["history"][get_basename(file_path)] = [os.path.join(file_path, f) for f in os.listdir(file_path) if f.endswith(".json")]
-        else:
+        if os.path.isfile(file_path):
             print(f"[WARNING] Path does not point at a directory.")
-            print(f"[FIX] Assume path points at the exact .json log file user wants to restore.")
+            print(f"[INFO] Assumes path points at the exact .json log file user wants to export.")
             if file_path.endswith(".json"):
-                root = os.path.dirname(root)
-                slack_dir["history"][os.path.dirname(file_path)] = [file_path]
+                slack_dir["history"][get_basename(os.path.dirname(file_path))] = file_path
             else:
                 print(f"[ERROR] Path does not point at a .json file - skipping path.")
                 return None
+        else:
+            subdirs = [file_path] + [d for d in [os.path.join(file_path, n) for n in os.listdir(file_path)] if os.path.isdir(d)]
+            for d in subdirs:
+                slack_dir["history"][get_basename(d)] = [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".json")]
     
-    slack_dir["important"] = {k: os.path.join(root, f) for k, f in slack_dir["important"].items() }
     slack_dir["root"] = root
 
     if not slack_dir["history"]:
-        print(f"[ERROR] No history .json files found at: {file_path}")
-    elif not all([os.path.exists(f) for f in slack_dir["important"].values()]):
-        print(f"[ERROR] Missing important .json files: {({k: 'exists' if os.path.exists(f) else 'missing' for k, f in slack_dir['important'].items()})}")
+        print(f"[ERROR] No history .json logs found at: {file_path}")
+        return None
     else:
-        print(f"[INFO] {len(slack_dir)} .json files loaded")
+        print(f"[INFO] Success! {len(slack_dir['history'])} .json logs loaded")
+        if not all([f in slack_dir["root_files"] for f in root_files]):
+            print(f"[WARNING] Missing important .json files: {({f: ('exists' if get_filename(f) in slack_dir['root_files'] else 'missing') for f in root_files})}")
 
     return slack_dir
 
@@ -140,9 +200,8 @@ def get_display_names(slack_dir):
 
     print(f"[INFO] Attempting to locate users.json")
 
-    file_path = slack_dir["important"]["users"]
-
-    if not os.path.isfile(file_path):
+    file_path = slack_dir["root_files"].get("users", None)
+    if (not file_path) or (not os.path.isfile(file_path)):
         print(f"[ERROR] Unable to locate users.json: {file_path}")
         return None
     try:
@@ -171,8 +230,8 @@ def get_slack2discord_user_mapping(slack_dir):
 
     print(f"[INFO] Attempting to locate slack2discord_users.json")
     
-    file_path = slack_dir["important"]["slack2discord_users"]
-    if not os.path.isfile(file_path):
+    file_path = slack_dir["root_files"].get("slack2discord_users", None)
+    if (not file_path) or (not os.path.isfile(file_path)):
         print(f"[ERROR] Unable to locate slack2discord_users.json: {file_path}")
         return None
 
@@ -204,8 +263,8 @@ def get_channel_names(slack_dir):
 
     print(f"[INFO] Attempting to locate channels.json")
 
-    file_path = slack_dir["important"]["channels"]
-    if not os.path.isfile(file_path):
+    file_path = slack_dir["root_files"].get("channels", None)
+    if (not file_path) or (not os.path.isfile(file_path)):
         print(f"[ERROR] Unable to locate channels.json: {file_path}")
         return None
 
@@ -281,7 +340,7 @@ def parse_important_files(slack_dir):
     if slack2discord_users:
         print(f"[INFO] slack2discord_users.json found - attempting to map @mentions")
     else:
-        print(f"[WARNING] No slack2discord_users.json found.")
+        print(f"[ERROR] No slack2discord_users.json found.")
         print(f"[FIX] Querying user for known mappings to generate file") # TODO
         print(f"[ERROR] Querying feature not implemented - @mentions will not map")
 
@@ -564,7 +623,7 @@ def register_commands():
         paths = list(kwpath)
         path = paths[0]
         print(f"[INFO] Attempting to import '{path}' to server '#{ctx.message.guild.name}'")
-        slack_dir = parse_slack_directory(path, force_all=True)
+        slack_dir = await parse_slack_directory(path, force_all=True)
         
         await import_slack_directory(ctx, path, slack_dir)
 
@@ -583,13 +642,14 @@ def register_commands():
         paths = list(kwpath)
         
         print(f"[INFO] Attempting to import '{paths}' to server '#{ctx.message.guild.name}'")
-        slack_dir = parse_slack_directory(paths[0])
+        slack_dir = await parse_slack_directory(paths[0])
         if not slack_dir:
             print(f"[ERROR] Failed to parse slack directory")
             return
 
         for path in paths[1:]:
-            for k, v in parse_slack_directory(path)["history"].items():
+            slack_dir_2 = await parse_slack_directory(path)
+            for k, v in slack_dir_2["history"].items():
                 slack_dir["history"][k] = slack_dir["history"].get(k,[]) + v
             
         await import_slack_directory(ctx, slack_dir["root"], slack_dir)
@@ -607,7 +667,7 @@ def register_commands():
         paths = list(kwpath)
         for path in paths:
             print(f"[INFO] Attempting to import '{path}' to channel '#{ctx.message.channel.name}'")
-            slack_dir = parse_slack_directory(path)
+            slack_dir = await parse_slack_directory(path)
             await import_slack_directory(ctx, path, slack_dir, match_channel=False)
 
 
